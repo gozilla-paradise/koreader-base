@@ -29,6 +29,7 @@ extern "C" {
 
 #include "lvdocview.h"
 #include "lvimg.h"
+#include "thaiwordbreak.h"
 
 static void replaceColor( char * str, lUInt32 color ) {
 	// in line like "0 c #80000000",
@@ -547,6 +548,47 @@ static int setUserHyphenationDict(lua_State *L) {
     const char *filename = luaL_checkstring(L, 1);
     bool reload = lua_toboolean(L, 2);
     lua_pushinteger(L, UserHyphDict::init(filename, reload));
+    return 1;
+}
+
+// Thai word breaking: path to the main word list, and optionally to the
+// list of weak words (both loaded lazily when some Thai text is met),
+// "" to disable.
+static int setThaiWordBreakDict(lua_State *L) {
+    const char *path = luaL_checkstring(L, 1);
+    const char *weak_path = luaL_optstring(L, 2, NULL);
+    ThaiWordBreak::setMainDictPath(path, weak_path);
+    return 0;
+}
+
+// Thai word breaking: path to the user word list (words added to the
+// main word list), "" to clear. Returns the number of words loaded,
+// or -1 if the file could not be read.
+static int setThaiWordBreakUserDict(lua_State *L) {
+    const char *path = luaL_checkstring(L, 1);
+    lua_pushinteger(L, ThaiWordBreak::setUserDict(path));
+    return 1;
+}
+
+// Thai word breaking: returns the provided text with the separator
+// (default "|") inserted where a line break would be allowed.
+static int getThaiWordBreaks(lua_State *L) {
+    const char *text = luaL_checkstring(L, 1);
+    const char *sep = luaL_optstring(L, 2, "|");
+    lString32 utext = Utf8ToUnicode(text);
+    lString32 usep = Utf8ToUnicode(sep);
+    int len = utext.length();
+    LVArray<lUInt8> breaks(len, 0);
+    ThaiWordBreak::findBreaks(utext.c_str(), len, [](int pos, void * ctx) {
+        ((lUInt8 *)ctx)[pos] = 1;
+    }, breaks.get());
+    lString32 res;
+    for ( int i=0; i<len; i++ ) {
+        res.append(1, utext[i]);
+        if ( breaks[i] )
+            res.append(usep);
+    }
+    lua_pushstring(L, UnicodeToUtf8(res).c_str());
     return 1;
 }
 
@@ -4436,6 +4478,9 @@ static const struct luaL_Reg cre_func[] = {
     {"getLatestDomVersion", getLatestDomVersion},
     {"getDomVersionWithNormalizedXPointers", getDomVersionWithNormalizedXPointers},
     {"setUserHyphenationDict", setUserHyphenationDict},
+    {"setThaiWordBreakDict", setThaiWordBreakDict},
+    {"setThaiWordBreakUserDict", setThaiWordBreakUserDict},
+    {"getThaiWordBreaks", getThaiWordBreaks},
     {"getHyphenationForWord", getHyphenationForWord},
     {"softHyphenateText", softHyphenateText},
     {"renderImageData", renderImageData},
