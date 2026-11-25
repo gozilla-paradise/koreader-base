@@ -927,6 +927,20 @@ static int getPartialRerenderingsCount(lua_State *L) {
 	}
 	return 0;
 }
+static int setInitialPartialRendering(lua_State *L) {
+	// To be called after loading, before rendering: if a full rendering is needed, only render
+	// the DocFragment containing xpointer (or the first one if none), estimate the height of
+	// the others, and enable partial rerendering (they will be rendered when drawn).
+	CreDocument *doc = (CreDocument*) luaL_checkudata(L, 1, "credocument");
+	bool enable = lua_toboolean(L, 2);
+	int min_text_size = luaL_optint(L, 3, 0);
+	const char *xpointer_str = luaL_optstring(L, 4, "");
+	if (doc->dom_doc) {
+		doc->dom_doc->setInitialPartialRendering(enable, min_text_size, lString32(xpointer_str));
+	}
+	return 0;
+}
+
 static int isRerenderingDelayed(lua_State *L) {
 	CreDocument *doc = (CreDocument*) luaL_checkudata(L, 1, "credocument");
 	if (doc->dom_doc) {
@@ -985,6 +999,8 @@ static int getPageFromXPointer(lua_State *L) {
 	int page = 1;
 	ldomXPointer xp = doc->dom_doc->createXPointer(lString32(xpointer_str));
 	if ( !xp.isNull() ) { // Found in document
+		// After an initial partial rendering, render its DocFragment if needed
+		doc->dom_doc->ensureRenderedForPosition(xp.getNode());
 		// Ensure xp points to a visible node that has a y in the document.
 		// If it is invisible, get the next visible node
 		ldomXPointerEx xpe = xp;
@@ -1014,6 +1030,8 @@ static int getPosFromXPointer(lua_State *L) {
 	int x = 0;
 	ldomXPointer xp = doc->dom_doc->createXPointer(lString32(xpointer_str));
 	if ( !xp.isNull() ) { // Found in document
+		// After an initial partial rendering, render its DocFragment if needed
+		doc->dom_doc->ensureRenderedForPosition(xp.getNode());
 		// Ensure xp points to a visible node that has a y in the document.
 		// If it is invisible, get the next visible node
 		ldomXPointerEx xpe = xp;
@@ -4506,6 +4524,7 @@ static const struct luaL_Reg credocument_meth[] = {
     {"isPartialRerenderingEnabled", isPartialRerenderingEnabled},
     {"enablePartialRerendering", enablePartialRerendering},
     {"getPartialRerenderingsCount", getPartialRerenderingsCount},
+    {"setInitialPartialRendering", setInitialPartialRendering},
     {"isRerenderingDelayed", isRerenderingDelayed},
     {"getPages", getPages},
     {"getCurrentPage", getCurrentPage},
